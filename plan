@@ -1,7 +1,0 @@
-Check if given path is file or directory
-1 file
-    Show current info
-    Prompt to modify each piece
-    Allow modification
-Multiple Files
-    Pick relevant file OR batch modify

@@ -1,39 +1,72 @@
-use audiotags::{self, Tag};
-use std::env::{self};
+use audiotags::{Tag, AudioTag};
+use std::env::{args};
 use std::io;
-use std::path::{self, Path};
+use std::path::{PathBuf};
+
+struct MusicFile {
+    path: PathBuf,
+    tag: Box<dyn AudioTag + Send + Sync>
+}
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let rl = rustyline::DefaultEditor::new().expect("Rustyline exploded");
+    let args: Vec<String> = args().skip(1).collect();
 
-    if args.len() == 1{
+    if args.len() == 1 {
+        let path = PathBuf::from(&args[0]);
+        if path.is_dir() {
+            let mut music_files = Vec::<MusicFile>::new();
+            let dir_files = match path.read_dir() {
+                Ok(d) => d,
+                Err(_) => {
+                    println!("Error: Failed to read directory");
+                    return;
+                }
+            };
+            for file in dir_files {
+                let file_path = file.unwrap().path();
+                let tag = Tag::new().read_from_path(&file_path).unwrap();
+                let music_file = MusicFile {
+                    path: file_path,
+                    tag: tag
+                };
+                music_files.push(music_file);
+            }
+            if music_files.len() > 0 {edit_multiple_files(music_files, rl)}
+            else {
+                println!("Error: No files in directory");
+                return;
+            }
+        }
+        else if path.is_file() {
+            let music_file = MusicFile {
+                path: path.to_path_buf(),
+                tag: Tag::new().read_from_path(path).unwrap()
+            };
+            edit_single_file(music_file, rl);
+        }
+    }
+    else if args.len() > 1 {
+        println!("TODO: Multiple files");
+    }
+    else {
         println!("Error: No arguments provided");
         return;
-    };
+    }
 
-    let path = Path::new(&args[1]);
-    if !path.is_file() {
-        println!("Error: Not a file");
-        return;
-    };
+    println!("Closing Program");
+    return;
+}
 
-    let file_name = path.file_name().unwrap().to_str().unwrap();
-
-    let mut tag = match Tag::new().read_from_path(path) {
-        Ok(t) => t,
-        Err(_) => {
-            println!("Error: Invalid file type");
-            return;
-        }
-    };
-
-    let mut rl = rustyline::DefaultEditor::new().unwrap();
+fn edit_single_file(music_file: MusicFile, mut rl: rustyline::DefaultEditor) {
     let mut modified = false;
+    let file_name = music_file.path.file_name().unwrap().to_str().unwrap();
+    let mut tag = music_file.tag;
+
     clearscreen::clear().expect("Failed to clear screen");
 
-    //Main loop
     loop {
-        println!("{}",file_name);
+        println!("File: {file_name}");
         println!("1) Title: {}", tag.title().unwrap_or("<none>"));
         println!("2) Artist: {}", tag.artist().unwrap_or("<none>"));
         println!(
@@ -56,7 +89,7 @@ fn main() {
 
         let selection: char = rl
             .readline("Selection? ")
-            .unwrap_or("_".to_string())
+            .unwrap_or_default()
             .parse()
             .unwrap_or('_');
 
@@ -66,37 +99,49 @@ fn main() {
                 let new_title = rl
                     .readline_with_initial("Title: ", (old_title, ""))
                     .expect("");
-                if old_title == new_title {continue;}
+                if old_title == new_title {
+                    continue;
+                }
                 modified = true;
                 tag.set_title(&new_title);
             }
+
             '2' => {
                 let old_artist = tag.artist().unwrap_or("");
                 let new_artist = rl
                     .readline_with_initial("Artist: ", (old_artist, ""))
                     .expect("");
-                if old_artist == new_artist {continue;}
+                if old_artist == new_artist {
+                    continue;
+                }
                 tag.set_artist(&new_artist);
                 modified = true
             }
+
             '3' => {
                 let old_album_artist = tag.album_artist().unwrap_or("");
                 let new_album_artist = rl
                     .readline_with_initial("Album Artist: ", (old_album_artist, ""))
                     .expect("");
-                if old_album_artist == new_album_artist {continue;}
+                if old_album_artist == new_album_artist {
+                    continue;
+                }
                 tag.set_album_artist(&new_album_artist);
                 modified = true
             }
+
             '4' => {
                 let old_album = tag.album_title().unwrap_or("");
                 let new_album = rl
                     .readline_with_initial("Album: ", (old_album, ""))
                     .expect("");
-                if old_album == new_album {continue;}
+                if old_album == new_album {
+                    continue;
+                }
                 tag.set_album_title(&new_album);
                 modified = true
             }
+
             '5' => {
                 let old_year = tag.year().unwrap_or(0);
                 let new_year = rl
@@ -110,10 +155,13 @@ fn main() {
                         continue;
                     }
                 };
-                if old_year == new_year {continue;}
+                if old_year == new_year {
+                    continue;
+                }
                 tag.set_year(new_year);
                 modified = true
             }
+
             '6' => {
                 let old_number = tag.track_number().unwrap_or(0);
                 let new_number = rl
@@ -144,10 +192,13 @@ fn main() {
                         continue;
                     }
                 };
-                if old_number != new_number {continue;}
+                if old_number != new_number {
+                    continue;
+                }
                 tag.set_total_tracks(new_total);
                 modified = true
             }
+
             '7' => {
                 let old_genre = tag.genre().unwrap_or("");
                 let new_genre = rl
@@ -156,6 +207,7 @@ fn main() {
                 tag.set_genre(&new_genre);
                 modified = true
             }
+
             '8' => {
                 let old_comment = tag.comment().unwrap_or("");
                 let new_comment = rl
@@ -164,6 +216,7 @@ fn main() {
                 tag.set_comment(new_comment);
                 modified = true
             }
+
             '9' => {
                 if !modified {
                     break;
@@ -191,7 +244,8 @@ fn main() {
                     _ => {}
                 }
             }
-            '0' => match tag.write_to_path(path.to_str().expect("")) {
+
+            '0' => match tag.write_to_path(music_file.path.to_str().expect("")) {
                 Ok(_) => {
                     break;
                 }
@@ -203,10 +257,12 @@ fn main() {
                     continue;
                 }
             },
+
             _ => println!("Error: Invalid option"),
         };
         clearscreen::clear().expect("Failed to clear screen");
     }
-    println!("Closing Program");
-    return;
+}
+
+fn edit_multiple_files(music_files: Vec<MusicFile>, mut rl: rustyline::DefaultEditor) {
 }
