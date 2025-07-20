@@ -62,7 +62,25 @@ fn main() {
             edit_single_file(&mut music_file, &mut rl);
         }
     } else if args.len() > 1 {
-        println!("TODO: Multiple files");
+        let mut music_files = Vec::<MusicFile>::new();
+        for arg in args {
+            let path = PathBuf::from(&arg);
+            if path.is_file() {
+                let tag = if let Ok(t) = Tag::new().read_from_path(&path) {t} else {
+                    println!("Error: File is not a music file");
+                    continue;
+                };
+                let music_file = MusicFile{path, tag};
+                music_files.push(music_file);
+            } else {
+                println!("Error: {} is not a file", arg);
+                continue;
+            }
+        }
+        if !music_files.is_empty() {edit_multiple_files(&mut music_files, &mut rl)} else {
+            println!("Error: No files in directory");
+            return;
+        }
     } else {
         println!("Error: No arguments provided");
         return;
@@ -452,8 +470,7 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                 }
             }
             'c' | 'C' => {
-                let total_files: Result<u16, _> = music_files.len().try_into();
-                let total_files = if let Ok(n) = total_files {
+                let total_files = if let Ok(n) = music_files.len().try_into() {
                     n
                 } else {
                     println!("Error: Too many files?");
@@ -471,6 +488,7 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                         for file in &mut *music_files {
                             file.tag.set_total_tracks(total_files);
                         }
+                        modified = true;
                     }
                     _ => {}
                 }
@@ -480,7 +498,7 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                     edit_single_file(file, rl);
                     let selection: char = rl
                         .readline("Continue editing? Y/n ")
-                        .unwrap_or_default()
+                        .unwrap_or("y".to_string())
                         .parse()
                         .unwrap_or('y');
                     match selection {
@@ -512,8 +530,8 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                     .unwrap_or("0".to_string())
                     .parse()
                     .unwrap_or(0);
-                if selection == 0 {
-                } else if selection <= music_files.len() {
+                if selection == 0 {}
+                else if selection <= music_files.len() {
                     edit_single_file(&mut music_files[selection], rl);
                 } else {
                     println!("Error: Invalid selection");
