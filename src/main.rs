@@ -16,33 +16,48 @@ fn main() {
 
         if path.is_dir() {
             let mut music_files = Vec::<MusicFile>::new();
-            let dir_files = match path.read_dir() {
-                Ok(d) => d,
-                Err(_) => {
-                    println!("Error: Failed to read directory");
-                    return;
-                }
+            let dir_files = if let Ok(d) = path.read_dir() {
+                d
+            } else {
+                println!("Error: Failed to read directory");
+                return;
             };
             for file in dir_files {
-                let file_path = file.unwrap().path();
-                if file_path.is_dir() {continue;};
-                let tag = Tag::new().read_from_path(&file_path).unwrap();
+                let file_path = if let Ok(f) = file {
+                    f.path()
+                } else {
+                    continue;
+                };
+                if file_path.is_dir() {
+                    continue;
+                };
+                let tag = if let Ok(p) = Tag::new().read_from_path(&file_path) {
+                    p
+                } else {
+                    continue;
+                };
                 let music_file = MusicFile {
                     path: file_path,
-                    tag: tag,
+                    tag,
                 };
                 music_files.push(music_file);
             }
-            if music_files.len() > 0 {
+            if !music_files.is_empty() {
                 edit_multiple_files(&mut music_files, &mut rl)
             } else {
                 println!("Error: No files in directory");
                 return;
             }
         } else if path.is_file() {
+            let tag = if let Ok(p) = Tag::new().read_from_path(&path) {
+                p
+            } else {
+                println!("Error: Not a music file");
+                return;
+            };
             let mut music_file = MusicFile {
                 path: path.to_path_buf(),
-                tag: Tag::new().read_from_path(path).unwrap(),
+                tag,
             };
             edit_single_file(&mut music_file, &mut rl);
         }
@@ -54,12 +69,21 @@ fn main() {
     }
 
     println!("Closing Program");
-    return;
 }
 
 fn edit_single_file(music_file: &mut MusicFile, rl: &mut rustyline::DefaultEditor) {
     let mut modified = false;
-    let file_name = music_file.path.file_name().unwrap().to_str().unwrap();
+    let file_name = if let Some(n) = music_file.path.file_name() {
+        if let Some(s) = n.to_str() {
+            s
+        } else {
+            println!("Error: File name is not UTF-8");
+            return;
+        }
+    } else {
+        println!("Error: Failed to get file name");
+        return;
+    };
     let tag = &mut music_file.tag;
 
     clearscreen::clear().expect("Failed to clear screen");
@@ -146,13 +170,12 @@ fn edit_single_file(music_file: &mut MusicFile, rl: &mut rustyline::DefaultEdito
                 let new_year = rl
                     .readline_with_initial("Year: ", (&old_year.to_string(), ""))
                     .expect("");
-                let new_year: i32 = match new_year.parse() {
-                    Ok(n) => n,
-                    Err(_) => {
-                        clearscreen::clear().expect("Failed to clear screen");
-                        println!("Error: Not a number\n");
-                        continue;
-                    }
+                let new_year: i32 = if let Ok(n) = new_year.parse() {
+                    n
+                } else {
+                    clearscreen::clear().expect("Failed to clear screen");
+                    println!("Error: Not a number\n");
+                    continue;
                 };
                 if old_year == new_year {
                     continue;
@@ -166,13 +189,12 @@ fn edit_single_file(music_file: &mut MusicFile, rl: &mut rustyline::DefaultEdito
                 let new_number = rl
                     .readline_with_initial("Track #: ", (&old_number.to_string(), ""))
                     .expect("");
-                let new_number: u16 = match new_number.parse() {
-                    Ok(n) => n,
-                    Err(_) => {
-                        clearscreen::clear().expect("Failed to clear screen");
-                        println!("Error: Not a number\n");
-                        continue;
-                    }
+                let new_number: u16 = if let Ok(n) = new_number.parse() {
+                    n
+                } else {
+                    clearscreen::clear().expect("Failed to clear screen");
+                    println!("Error: Not a number\n");
+                    continue;
                 };
                 if old_number != new_number {
                     tag.set_track_number(new_number);
@@ -183,13 +205,12 @@ fn edit_single_file(music_file: &mut MusicFile, rl: &mut rustyline::DefaultEdito
                 let new_total = rl
                     .readline_with_initial("Total Tracks: ", (&old_total.to_string(), ""))
                     .expect("");
-                let new_total: u16 = match new_total.parse() {
-                    Ok(n) => n,
-                    Err(_) => {
-                        clearscreen::clear().expect("Failed to clear screen");
-                        println!("Error: Not a number\n");
-                        continue;
-                    }
+                let new_total: u16 = if let Ok(n) = new_total.parse() {
+                    n
+                } else {
+                    clearscreen::clear().expect("Failed to clear screen");
+                    println!("Error: Not a number\n");
+                    continue;
                 };
                 if old_number != new_number {
                     continue;
@@ -216,21 +237,24 @@ fn edit_single_file(music_file: &mut MusicFile, rl: &mut rustyline::DefaultEdito
                 modified = true
             }
 
-            '9' => match tag.write_to_path(music_file.path.to_str().expect("")) {
-                Ok(_) => {
+            // '9' => if let Ok(_) = tag.write_to_path(music_file.path.to_str().expect("")) {
+            '9' => {
+                if tag
+                    .write_to_path(music_file.path.to_str().expect(""))
+                    .is_ok()
+                {
                     modified = false;
                     clearscreen::clear().expect("Failed to clear screen");
                     println!("Save Successful!");
                     continue;
-                }
-                Err(_) => {
+                } else {
                     clearscreen::clear().expect("Failed to clear screen");
                     println!("WARNING!");
                     println!("Failed to write tag data. Returning to selection");
                     println!("Please verify the provided file still exists\n");
                     continue;
                 }
-            },
+            }
 
             '0' => {
                 if !modified {
@@ -257,13 +281,15 @@ fn edit_single_file(music_file: &mut MusicFile, rl: &mut rustyline::DefaultEdito
 fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::DefaultEditor) {
     let mut modified = false;
 
-    let mut group_artist = music_files[0].tag.artist()
+    let mut group_artist = music_files[0].tag.artist().unwrap_or("<none>").to_string();
+    let mut group_album_artist = music_files[0]
+        .tag
+        .album_artist()
         .unwrap_or("<none>")
         .to_string();
-    let mut group_album_artist = music_files[0].tag.album_artist()
-        .unwrap_or("<none>")
-        .to_string();
-    let mut group_album = music_files[0].tag.album_title()
+    let mut group_album = music_files[0]
+        .tag
+        .album_title()
         .unwrap_or("<none>")
         .to_string();
     let mut group_year = music_files[0].tag.year().unwrap_or(0);
@@ -316,9 +342,7 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
 
         match selection {
             '1' => {
-                let new_artist = rl
-                    .readline("Artist: ")
-                    .expect("");
+                let new_artist = rl.readline("Artist: ").expect("");
                 if group_artist == new_artist {
                     continue;
                 }
@@ -330,9 +354,7 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
             }
 
             '2' => {
-                let new_album_artist = rl
-                    .readline("Album Artist: ")
-                    .expect("");
+                let new_album_artist = rl.readline("Album Artist: ").expect("");
                 if group_album_artist == new_album_artist {
                     continue;
                 }
@@ -344,9 +366,7 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
             }
 
             '3' => {
-                let new_album = rl
-                    .readline("Album: ")
-                    .expect("");
+                let new_album = rl.readline("Album: ").expect("");
                 if group_album == new_album {
                     continue;
                 }
@@ -358,16 +378,13 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
             }
 
             '4' => {
-                let new_year = rl
-                    .readline("Year: ")
-                    .expect("");
-                let new_year: i32 = match new_year.parse() {
-                    Ok(n) => n,
-                    Err(_) => {
-                        clearscreen::clear().expect("Failed to clear screen");
-                        println!("Error: Not a number\n");
-                        continue;
-                    }
+                let new_year = rl.readline("Year: ").expect("");
+                let new_year: i32 = if let Ok(n) = new_year.parse() {
+                    n
+                } else {
+                    clearscreen::clear().expect("Failed to clear screen");
+                    println!("Error: Not a number\n");
+                    continue;
                 };
                 if group_year == new_year {
                     continue;
@@ -380,16 +397,13 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
             }
 
             '5' => {
-                let new_total_tracks = rl
-                    .readline("Total Tracks: ")
-                    .expect("");
-                let new_total_tracks: u16 = match new_total_tracks.parse() {
-                    Ok(n) => n,
-                    Err(_) => {
-                        clearscreen::clear().expect("Failed to clear screen");
-                        println!("Error: Not a number\n");
-                        continue;
-                    }
+                let new_total_tracks = rl.readline("Total Tracks: ").expect("");
+                let new_total_tracks: u16 = if let Ok(n) = new_total_tracks.parse() {
+                    n
+                } else {
+                    clearscreen::clear().expect("Failed to clear screen");
+                    println!("Error: Not a number\n");
+                    continue;
                 };
                 if group_total_tracks == new_total_tracks {
                     continue;
@@ -403,23 +417,24 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
 
             '9' => {
                 for music_file in &mut *music_files {
-                    match music_file.tag.write_to_path(music_file.path.to_str().expect("")) {
-                        Ok(_) => {
-                            modified = false;
-                            clearscreen::clear().expect("Failed to clear screen");
-                            println!("Save Successful!");
-                            continue;
-                        }
-                        Err(_) => {
-                            clearscreen::clear().expect("Failed to clear screen");
-                            println!("WARNING!");
-                            println!("Failed to write tag data. Returning to selection");
-                            println!("Please verify the provided directory is intact!\n");
-                            continue;
-                        }
+                    if music_file
+                        .tag
+                        .write_to_path(music_file.path.to_str().expect(""))
+                        .is_ok()
+                    {
+                        modified = false;
+                        clearscreen::clear().expect("Failed to clear screen");
+                        println!("Save Successful!");
+                        continue;
+                    } else {
+                        clearscreen::clear().expect("Failed to clear screen");
+                        println!("WARNING!");
+                        println!("Failed to write tag data. Returning to selection");
+                        println!("Please verify the provided directory is intact!\n");
+                        continue;
                     }
                 }
-            },
+            }
 
             '0' => {
                 if !modified {
@@ -436,17 +451,16 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                     'y' | 'Y' => break,
                     _ => {}
                 }
-            },
+            }
             'c' | 'C' => {
-                let total_files: Result<u16,_> = music_files.len().try_into();
-                let total_files = match total_files {
-                    Ok(n) => n,
-                    Err(_) => {
-                        println!("Error: Too many files?");
-                        continue;
-                    }
+                let total_files: Result<u16, _> = music_files.len().try_into();
+                let total_files = if let Ok(n) = total_files {
+                    n
+                } else {
+                    println!("Error: Too many files?");
+                    continue;
                 };
-                println!("There are {} valid music files detected", total_files);
+                println!("There are {total_files} valid music files detected");
                 let selection: char = rl
                     .readline("Set this as the total track count? y/N ")
                     .unwrap_or("n".to_string())
@@ -458,14 +472,15 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                         for file in &mut *music_files {
                             file.tag.set_total_tracks(total_files);
                         }
-                    },
+                    }
                     _ => {}
                 }
             }
             'e' | 'E' => {
                 for file in &mut *music_files {
                     edit_single_file(file, rl);
-                    let selection: char = rl.readline("Continue editing? Y/n ")
+                    let selection: char = rl
+                        .readline("Continue editing? Y/n ")
                         .unwrap_or_default()
                         .parse()
                         .unwrap_or('y');
@@ -476,8 +491,19 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                 }
             }
             'v' | 'V' => {
-                for i in 0..music_files.len() {
-                    let file_name = music_files[i].path.file_name().unwrap().to_str().unwrap();
+                for (i, file) in music_files.iter().enumerate() {
+                    // let file_name = file.path.file_name().unwrap().to_str().unwrap();
+                    let file_name = if let Some(n) = file.path.file_name() {
+                        if let Some(s) = n.to_str() {
+                            s
+                        } else {
+                            println!("Error: File name not UTF-8");
+                            continue;
+                        }
+                    } else {
+                        println!("Error: Couldn't get file name");
+                        continue;
+                    };
                     println!("{i}) {file_name}");
                 }
                 println!();
@@ -487,12 +513,11 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
                     .readline("Choose a file to edit: ")
                     .unwrap_or("0".to_string())
                     .parse()
-                    .unwrap();
-                if selection == 0 {}
-                else if selection <= music_files.len() {
+                    .unwrap_or(0);
+                if selection == 0 {
+                } else if selection <= music_files.len() {
                     edit_single_file(&mut music_files[selection], rl);
-                }
-                else {
+                } else {
                     println!("Error: Invalid selection");
                     continue;
                 }
