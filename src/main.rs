@@ -237,7 +237,6 @@ fn edit_single_file(music_file: &mut MusicFile, rl: &mut rustyline::DefaultEdito
                 modified = true
             }
 
-            // '9' => if let Ok(_) = tag.write_to_path(music_file.path.to_str().expect("")) {
             '9' => {
                 if tag
                     .write_to_path(music_file.path.to_str().expect(""))
@@ -492,7 +491,6 @@ fn edit_multiple_files(music_files: &mut Vec<MusicFile>, rl: &mut rustyline::Def
             }
             'v' | 'V' => {
                 for (i, file) in music_files.iter().enumerate() {
-                    // let file_name = file.path.file_name().unwrap().to_str().unwrap();
                     let file_name = if let Some(n) = file.path.file_name() {
                         if let Some(s) = n.to_str() {
                             s
